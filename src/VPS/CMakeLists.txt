@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(VisualSLAM_keypoint)
+project(VPS)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
@@ -88,7 +88,7 @@ target_link_libraries(${PROJECT_NAME}_node
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_VisualSLAM_keypoint.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_VPS.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
