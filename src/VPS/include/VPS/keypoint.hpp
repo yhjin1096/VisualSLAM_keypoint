@@ -5,7 +5,9 @@ class Keypoint
     private:
         /* data */
     public:
-        Keypoint(/* args */);
-        ~Keypoint();
+        // Keypoint(/* args */);
+        // ~Keypoint();
+
+        int x, y;
 };
 #endif

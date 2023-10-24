@@ -34,10 +34,16 @@ include_directories(
   ${Eigen3_INCLUDE_DIR}
 )
 
-add_executable(${PROJECT_NAME}_node src/main.cpp)
+add_executable(${PROJECT_NAME}_node src/main.cpp
+                                    src/camera.cpp
+                                    src/keypoint.cpp
+                                    src/node.cpp
+                                    src/matcher.cpp
+)
 
 target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
   ${CERES_LIBRARIES}
 )
 
