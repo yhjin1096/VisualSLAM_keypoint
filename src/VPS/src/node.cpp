@@ -6,7 +6,7 @@ void Node::triangulation()
     cv::Mat T1 = (cv::Mat_<float>(3, 4) << 1, 0, 0, 0,
                                            0, 1, 0, 0,
                                            0, 0, 1, 0);
-    cv::Mat T2 = (cv::Mat_<float>(3, 4) << this->R.at<double>(0, 0), this->R.at<double>(0, 1), this->R.at<double>(0, 2), base_line,
+    cv::Mat T2 = (cv::Mat_<float>(3, 4) << this->R.at<double>(0, 0), this->R.at<double>(0, 1), this->R.at<double>(0, 2), -base_line,
                                            this->R.at<double>(1, 0), this->R.at<double>(1, 1), this->R.at<double>(1, 2), this->t.at<double>(1, 0),
                                            this->R.at<double>(2, 0), this->R.at<double>(2, 1), this->R.at<double>(2, 2), this->t.at<double>(2, 0));
 
@@ -36,7 +36,7 @@ void Node::triangulation()
             x.at<float>(1, 0),
             x.at<float>(2, 0));
         this->points.push_back(p);
-        std::cout << p << std::endl;
+        // std::cout << p << std::endl;
     }
 }
 
@@ -91,7 +91,7 @@ void Node::Get3DPoints()
         F = result(0) * left_sp;
         G = base_line_ + result(1) * right_sp;
 
-        std::cout << ((F+G)/2.0 + Vector3d(base_line,0,0)).transpose() << std::endl;
+        // std::cout << ((F+G)/2.0 + Vector3d(base_line,0,0)).transpose() << std::endl;
         
         this->points_3d.push_back((F+G)/2.0 + Vector3d(0.12,0,0));
         // this->points_3d_map.insert(std::make_pair(q_idx, this->points_3d[points_3d.size()-1]));
