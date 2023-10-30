@@ -12,7 +12,7 @@ class Camera
         // ~Camera();
 
         Matrix3d intrinsic;
-        Matrix4_3d projection_mat;
+        Matrix3_4d projection_mat;
         cv::Mat K;
 
         cv::Mat original_image, gray_image;

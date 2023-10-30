@@ -3,24 +3,25 @@
 
 void Node::triangulation()
 {
-    cv::Mat T1 = (cv::Mat_<float>(3, 4) << 1, 0, 0, 0,
-                                           0, 1, 0, 0,
-                                           0, 0, 1, 0);
-    cv::Mat T2 = (cv::Mat_<float>(3, 4) << this->R.at<double>(0, 0), this->R.at<double>(0, 1), this->R.at<double>(0, 2), -base_line,
-                                           this->R.at<double>(1, 0), this->R.at<double>(1, 1), this->R.at<double>(1, 2), this->t.at<double>(1, 0),
-                                           this->R.at<double>(2, 0), this->R.at<double>(2, 1), this->R.at<double>(2, 2), this->t.at<double>(2, 0));
+    cv::Mat T1 = (cv::Mat_<float>(3, 4) << this->left_cam.projection_mat(0, 0), this->left_cam.projection_mat(0, 1), this->left_cam.projection_mat(0, 2), this->left_cam.projection_mat(0,3),
+                                           this->left_cam.projection_mat(1, 0), this->left_cam.projection_mat(1, 1), this->left_cam.projection_mat(1, 2), this->left_cam.projection_mat(1,3),
+                                           this->left_cam.projection_mat(2, 0), this->left_cam.projection_mat(2, 1), this->left_cam.projection_mat(2, 2), this->left_cam.projection_mat(2,3));
+                                           
+    cv::Mat T2 = (cv::Mat_<float>(3, 4) << this->right_cam.projection_mat(0, 0), this->right_cam.projection_mat(0, 1), this->right_cam.projection_mat(0, 2), this->right_cam.projection_mat(0,3),
+                                           this->right_cam.projection_mat(1, 0), this->right_cam.projection_mat(1, 1), this->right_cam.projection_mat(1, 2), this->right_cam.projection_mat(1,3),
+                                           this->right_cam.projection_mat(2, 0), this->right_cam.projection_mat(2, 1), this->right_cam.projection_mat(2, 2), this->right_cam.projection_mat(2,3));
 
     std::vector<cv::Point2f> pts_1, pts_2;
     
     for (cv::DMatch m : this->stereo_match.match_in)
     {
-        // Convert pixel coordinates to camera coordinates
-        
-        pts_1.push_back(pixel2cam(this->left_cam.keypoint[m.queryIdx].pt, this->left_cam.K));
-        pts_2.push_back(pixel2cam(this->right_cam.keypoint[m.trainIdx].pt, this->right_cam.K));
+        //pixel coordinate
+        pts_1.push_back(this->left_cam.keypoint[m.queryIdx].pt);
+        pts_2.push_back(this->right_cam.keypoint[m.trainIdx].pt);
     }
 
-    cv::Mat pts_4d; // computed triangulated points returned in world coordinate system (that is w.r.t cam1 since T1 = eye )
+    // computed triangulated points returned in world coordinate system (that is w.r.t cam1 since T1 = eye )
+    cv::Mat pts_4d; 
     cv::triangulatePoints(T1, T2, pts_1, pts_2, pts_4d);
 
     // Convert to non-homogeneous coordinates
@@ -36,7 +37,6 @@ void Node::triangulation()
             x.at<float>(1, 0),
             x.at<float>(2, 0));
         this->points.push_back(p);
-        // std::cout << p << std::endl;
     }
 }
 
