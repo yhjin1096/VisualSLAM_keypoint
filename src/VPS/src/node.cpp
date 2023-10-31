@@ -37,6 +37,9 @@ void Node::triangulation()
             x.at<float>(1, 0),
             x.at<float>(2, 0));
         this->points.push_back(p);
+        this->points_3d.push_back(Vector3d(p.x, p.y, p.z));
+        // std::cout << points[points.size()-1] << std::endl;
+        // std::cout << points_3d[points_3d.size()-1].transpose() << std::endl;
     }
 }
 

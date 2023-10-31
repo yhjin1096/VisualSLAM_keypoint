@@ -15,6 +15,11 @@ find_package(OpenCV REQUIRED)
 find_package(Ceres REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+find_package(PCL 1.12 REQUIRED)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
 catkin_package(
  INCLUDE_DIRS include
  LIBRARIES VPS
@@ -45,6 +50,7 @@ target_link_libraries(${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
   ${OpenCV_LIBRARIES}
   ${CERES_LIBRARIES}
+  ${PCL_LIBRARIES}
 )
 
 #############
