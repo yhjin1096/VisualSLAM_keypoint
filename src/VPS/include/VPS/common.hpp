@@ -15,7 +15,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
-
+#include <opencv2/viz.hpp>
 
 #include "eigen3/Eigen/Core"
 #include "eigen3/Eigen/Dense"
@@ -87,6 +87,56 @@ public:
     {
         return (this->time2 - this->time1) * 1000.0;
     }
+};
+
+class GTPose
+{
+    public:
+        std::vector<pose_t> pose_eig;
+        std::vector<cv::Affine3f> pose_aff;
+
+        void readGTPose(const std::string& path)
+        {
+            std::ifstream file(path);
+            std::string line, word;
+
+            if(file.is_open())
+            {
+                while(getline(file, line))
+                {
+                    int i = 0, j = 0;
+                    Matrix3_4d pose;
+                    std::stringstream ss(line);
+                    while(getline(ss, word, ' '))
+                    {
+                        pose(j,i) = std::stod(word);
+                        i++;
+                        if(i==4)
+                        {
+                            i=0;
+                            j++;
+                        }
+                    }
+                    pose_t tmp_pose_eig;
+                    cv::Affine3f tmp_pose_aff;
+                    tmp_pose_eig.R = pose.topLeftCorner(3,3);
+                    tmp_pose_eig.t = pose.topRightCorner(3,1);
+                    tmp_pose_aff.rotation((cv::Mat_<float>(3,3) << pose(0,0), pose(0,1), pose(0,2),
+                                                                  pose(1,0), pose(1,1), pose(1,2),
+                                                                  pose(2,0), pose(2,1), pose(2,2)));
+                    tmp_pose_aff.translation(cv::Vec3f(pose(0,3), pose(1,3), pose(2,3)));
+                    pose_eig.push_back(tmp_pose_eig);
+                    pose_aff.push_back(tmp_pose_aff);
+                }
+                file.close();
+            }
+            else
+            {
+                std::cout << "file not found" << std::endl;
+                exit(0);
+            }
+        };
+    private:
 };
 
 #endif

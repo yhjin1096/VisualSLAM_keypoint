@@ -36,7 +36,8 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
         }
         if(match)
         {
-            point_cloud.push_back(cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2)));
+            point_cloud.push_back((cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2))));
+            // point_cloud.push_back(cv::Point3f(prev_node.left_cam.keypoint[q_idx].pt.x, prev_node.left_cam.keypoint[q_idx].pt.y, 0));
             point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
         }
     }
@@ -300,58 +301,87 @@ inline void ProjectionStereo(const Node& node)
 
 int main(int argc, char** argv)
 {
+    std::vector<std::thread> tasks;
+
     std::vector<Node> nodes;
     uint image_index = 0;
 
-    while(1)
+    tasks.push_back(std::move(std::thread([&]()
     {
-        Node node;
-        node.id = image_index;
-        node.left_cam.InitCamParam();
-        node.right_cam.InitCamParam();
-        node.left_cam.intrinsic << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02,
-                                   0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02,
-                                   0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00;
-        node.left_cam.projection_mat << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02, 0.000000000000e+00,
-                                        0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02, 0.000000000000e+00,
-                                        0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00, 0.000000000000e+00;
-        node.right_cam.intrinsic << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02,
+        while(1)
+        {
+            Node node;
+            node.id = image_index;
+            node.left_cam.InitCamParam();
+            node.right_cam.InitCamParam();
+            node.left_cam.intrinsic << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02,
                                     0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02,
                                     0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00;
-        node.right_cam.projection_mat << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02, -3.798145000000e+02,
-                                         0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02, 0.000000000000e+00,
-                                         0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00, 0.000000000000e+00;
+            node.left_cam.projection_mat << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02, 0.000000000000e+00,
+                                            0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02, 0.000000000000e+00,
+                                            0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00, 0.000000000000e+00;
+            node.right_cam.intrinsic << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02,
+                                        0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02,
+                                        0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00;
+            node.right_cam.projection_mat << 7.070912000000e+02, 0.000000000000e+00, 6.018873000000e+02, -3.798145000000e+02,
+                                            0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02, 0.000000000000e+00,
+                                            0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00, 0.000000000000e+00;
 
-        node.left_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_0/%06d.png", image_index));
-        node.right_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_1/%06d.png", image_index));
+            node.left_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_0/%06d.png", image_index));
+            node.right_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_1/%06d.png", image_index));
 
-        node.stereo_match = Matcher::KnnMatchingORB(node.left_cam.descriptor, node.right_cam.descriptor);
-        // Matcher::DrawMatching(node.left_cam, node.right_cam, node.stereo_match, "stereo_match");
+            node.stereo_match = Matcher::KnnMatchingORB(node.left_cam.descriptor, node.right_cam.descriptor);
+            // Matcher::DrawMatching(node.left_cam, node.right_cam, node.stereo_match, "stereo_match");
 
-        node.triangulation();
-        // node.Get3DPoints();
+            node.triangulation();
+            // node.Get3DPoints();
 
-        // //stereo 이미지에 projection 시켜서 확인
-        // ProjectionStereo(node);
+            // //stereo 이미지에 projection 시켜서 확인
+            // ProjectionStereo(node);
 
-        nodes.push_back(node);
+            nodes.push_back(node);
 
-        if(nodes.size() > 1)
-        {
-            // PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-            PoseEstimation_ICP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-            Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+            if(nodes.size() > 1)
+            {
+                PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                // PoseEstimation_ICP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
 
-            //prev node, current node 간의 correspondence 찾고
-            //prev node에서 3d point 계산 후
-            //pose estimation -> 예제코드 좀 더 추가
-            //correspondence 맞는지 확인해야함
-            //projection도 해보기
+                //prev node, current node 간의 correspondence 찾고
+                //prev node에서 3d point 계산 후
+                //pose estimation -> 예제코드 좀 더 추가
+                //correspondence 맞는지 확인해야함
+                //projection도 해보기
+            }
+
+            image_index++;
         }
+    })));
 
-        image_index++;
-    }
+
+    GTPose gt_pose;
+    gt_pose.readGTPose("/home/cona/Downloads/data_odometry_gray/data_odometry_poses/dataset/poses/06.txt");
     
+    cv::viz::Viz3d myWindow("Coordinate Frame");
+    myWindow.setWindowSize(cv::Size(1280,960));
+    
+    tasks.push_back(std::move(std::thread([&]()
+    {   
+        //3d visualize
+        int id = 0;
+        while(!myWindow.wasStopped())
+        {
+            if(id < gt_pose.pose_aff.size())
+            {
+                myWindow.showWidget(std::to_string(id), cv::viz::WCoordinateSystem(5.0), gt_pose.pose_aff[id]);
+                id++;
+            }
+            myWindow.spinOnce(1, true);
+        }
+    })));
+    
+    for(int i=0; i<(int)tasks.size(); i++)
+        tasks[i].join();
     
     return 0;
 }
