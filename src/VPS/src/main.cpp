@@ -18,29 +18,114 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
     std::vector<cv::Point3f> in_point_cloud;
     std::vector<cv::Point2f> in_point_pixel;
 
-    //prev_node.left_cam.descriptor -> train, curr_node.left_cam.descriptor -> query
+    //prev_node.left_cam.descriptor -> query, curr_node.left_cam.descriptor -> train
     Correspondence corr = Matcher::KnnMatchingORB(prev_node.left_cam.descriptor, curr_node.left_cam.descriptor);
 
+    cv::Mat prev_limg = prev_node.left_cam.original_image.clone(),
+            prev_rimg = prev_node.right_cam.original_image.clone(),
+            curr_limg = curr_node.left_cam.original_image.clone(),
+            curr_rimg = curr_node.right_cam.original_image.clone();
+    //stereo match circle
+    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
+        cv::circle(prev_limg, prev_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
+        cv::circle(prev_rimg, prev_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
+    }
+    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
+        cv::circle(curr_limg, curr_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
+        cv::circle(curr_rimg, curr_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
+    }
+
+    //tracking match circle
+    std::vector<cv::DMatch> tmp_corr;
     for(int i = 0; i < corr.match_in.size(); i++)
     {
-        int q_idx = corr.match_in[i].queryIdx;
-        int t_idx = corr.match_in[i].trainIdx;
-        bool match = false;
-        for(j = 0; j < prev_node.stereo_match.match_in.size(); j++)
+        int q_idx = corr.match_in[i].queryIdx; //prev_node left_cam
+        int t_idx = corr.match_in[i].trainIdx; //curr_node left_cam
+        bool prev_match = false, curr_match = false;
+        for(int j = 0; j < prev_node.stereo_match.match_in.size(); j++)
         {
             if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
             {
-                match = true;
+                prev_match = true;
                 break;
             }
         }
-        if(match)
+        for(int j = 0; j < curr_node.stereo_match.match_in.size(); j++)
         {
-            point_cloud.push_back((cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2))));
-            // point_cloud.push_back(cv::Point3f(prev_node.left_cam.keypoint[q_idx].pt.x, prev_node.left_cam.keypoint[q_idx].pt.y, 0));
-            point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
+            if(curr_node.stereo_match.match_in[j].queryIdx == t_idx)
+            {
+                curr_match = true;
+                break;
+            }
+        }
+        if(prev_match && curr_match)
+        {   
+            tmp_corr.push_back(corr.match_in[i]);
         }
     }
+
+    cv::Mat prev_image, curr_image, whole_image;
+    cv::hconcat(prev_limg, prev_rimg, prev_image);
+    cv::hconcat(curr_limg, curr_rimg, curr_image);
+
+    //stereo match line
+    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
+        cv::line(prev_image, prev_node.left_cam.keypoint[q_idx].pt, prev_node.right_cam.keypoint[t_idx].pt+cv::Point2f(prev_node.left_cam.original_image.size().width,0), cv::Scalar(0,0,255), 1);
+    }
+    for(int i = 0; i < curr_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
+        cv::line(curr_image, curr_node.left_cam.keypoint[q_idx].pt, curr_node.right_cam.keypoint[t_idx].pt+cv::Point2f(curr_node.left_cam.original_image.size().width,0), cv::Scalar(0,0,255), 1);
+    }
+
+    cv::vconcat(curr_image, prev_image, whole_image);
+
+    //tracking line
+    for(int i = 0; i < tmp_corr.size(); i++)
+    {
+        int q_idx = tmp_corr[i].queryIdx; //prev_node left_cam
+        int t_idx = tmp_corr[i].trainIdx; //curr_node left_cam
+        cv::circle(whole_image, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), 3, cv::Scalar(0,255,0), 2);
+        cv::circle(whole_image, curr_node.left_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,255,0), 2);
+        cv::line(whole_image, curr_node.left_cam.keypoint[t_idx].pt, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), cv::Scalar(0,255,0), 1);
+    }
+
+    cv::imshow("whole_image", whole_image);
+    char key = cv::waitKey(0);
+    if(key==27)
+        exit(0);
+///////
+
+    // for(int i = 0; i < corr.match_in.size(); i++)
+    // {
+    //     int q_idx = corr.match_in[i].queryIdx;
+    //     int t_idx = corr.match_in[i].trainIdx;
+    //     bool match = false;
+    //     for(j = 0; j < prev_node.stereo_match.match_in.size(); j++)
+    //     {
+    //         if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
+    //         {
+    //             match = true;
+    //             break;
+    //         }
+    //     }
+    //     if(match)
+    //     {
+    //         point_cloud.push_back((cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2))));
+    //         // point_cloud.push_back(cv::Point3f(prev_node.left_cam.keypoint[q_idx].pt.x, prev_node.left_cam.keypoint[q_idx].pt.y, 0));
+    //         point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
+    //     }
+    // }
 
     //ransac으로 inlier 검출
     cv::Mat dist_coeff = cv::Mat::zeros(5, 1, CV_64F), rvec, tvec, tvec_, rot_mat, rot_mat_;
@@ -187,7 +272,7 @@ inline void Projection(const Node& prev_node, const Node& curr_node)
     }
 
     //visualize tracked features
-    int j = 0;
+    int prev_idx = 0, curr_idx = 0;
     std::vector<cv::Point3f> point_cloud;
     std::vector<cv::Point2f> point_pixel;
     std::vector<std::pair<int,int>> point_corr;
@@ -198,24 +283,34 @@ inline void Projection(const Node& prev_node, const Node& curr_node)
 
     for(int i = 0; i < corr.match_in.size(); i++)
     {
-        int q_idx = corr.match_in[i].queryIdx;
-        int t_idx = corr.match_in[i].trainIdx;
-        bool match = false;
-        for(j = 0; j < prev_node.stereo_match.match_in.size(); j++)
+        int q_idx = corr.match_in[i].queryIdx; // curr_left
+        int t_idx = corr.match_in[i].trainIdx; // prev_left
+        bool prev_match = false, curr_match=false;
+        for(prev_idx = 0; prev_idx < prev_node.stereo_match.match_in.size(); prev_idx++)
         {
-            if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
+            if(prev_node.stereo_match.match_in[prev_idx].queryIdx == t_idx)
             {
                 // point_corr.push_back(std::make_pair(q_idx,t_idx));
-                match = true;
+                prev_match = true;
                 break;
             }
         }
-        if(match)
+        for(curr_idx = 0; curr_idx < curr_node.stereo_match.match_in.size(); curr_idx++)
         {
-            point_cloud.push_back(cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2)));
-            point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
+            if(curr_node.stereo_match.match_in[curr_idx].queryIdx == q_idx)
+            {
+                // point_corr.push_back(std::make_pair(q_idx,t_idx));
+                curr_match = true;
+                break;
+            }
+        }
+        if(prev_match && curr_match)
+        {
+            point_cloud.push_back(cv::Point3f(prev_node.points_3d[prev_idx](0),prev_node.points_3d[prev_idx](1),prev_node.points_3d[prev_idx](2)));
+            point_pixel.push_back(curr_node.left_cam.keypoint[q_idx].pt);
         }
     }
+    std::cout << point_cloud.size() << std::endl;
 
     //point cloud world기준으로 변경, projection
     for(int i = 0; i < point_cloud.size(); i++)
@@ -345,7 +440,7 @@ int main(int argc, char** argv)
             {
                 PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
                 // PoseEstimation_ICP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-                Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                // Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
 
                 //prev node, current node 간의 correspondence 찾고
                 //prev node에서 3d point 계산 후
@@ -368,14 +463,12 @@ int main(int argc, char** argv)
     tasks.push_back(std::move(std::thread([&]()
     {   
         //3d visualize
-        int id = 0;
+        for(int i = 0; i < gt_pose.pose_aff.size(); i++)
+            myWindow.showWidget(std::to_string(i), cv::viz::WCoordinateSystem(5.0), gt_pose.pose_aff[i]);
+
         while(!myWindow.wasStopped())
         {
-            if(id < gt_pose.pose_aff.size())
-            {
-                myWindow.showWidget(std::to_string(id), cv::viz::WCoordinateSystem(5.0), gt_pose.pose_aff[id]);
-                id++;
-            }
+            
             myWindow.spinOnce(1, true);
         }
     })));
