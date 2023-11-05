@@ -8,6 +8,35 @@
 #include "pcl-1.12/pcl/visualization/cloud_viewer.h"
 #include "pcl-1.12/pcl/registration/icp.h"
 
+inline void PoseEstimation_Essential(const Node& prev_node, Node& curr_node)
+{
+    std::vector<cv::Point2f> points1;
+    std::vector<cv::Point2f> points2;
+    Correspondence matches = Matcher::KnnMatchingORB(prev_node.left_cam.descriptor, curr_node.left_cam.descriptor);
+    for (int i = 0; i < (int) matches.size(); i++)
+    {
+        points1.push_back(prev_node.left_cam.keypoint[matches[i].queryIdx].pt);
+        points2.push_back(curr_node.left_cam.keypoint[matches[i].trainIdx].pt);
+    }
+    
+//   cv::Mat fundamental_matrix;
+//   fundamental_matrix = cv::findFundamentalMat(points1, points2, cv::FM_8POINT);
+//   std::cout << "fundamental_matrix is " << std::endl << fundamental_matrix << std::endl;
+
+  cv::Mat essential_matrix;
+  essential_matrix = cv::findEssentialMat(points1, points2, prev_node.left_cam.K);
+//   std::cout << "essential_matrix is " << std::endl << essential_matrix << std::endl;
+
+//   cv::Mat homography_matrix;
+//   homography_matrix = cv::findHomography(points1, points2, 0, 3);
+//   std::cout << "homography_matrix is " << std::endl << homography_matrix << std::endl;
+
+  cv::Mat R, t;
+  cv::recoverPose(essential_matrix, points1, points2, prev_node.left_cam.K, R, t);
+  std::cout << "R is " << std::endl << R.inv() << std::endl;
+  std::cout << "t is " << std::endl << -R.inv()*t << std::endl;
+}
+
 inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
 {
     cv::Affine3f result;
@@ -445,7 +474,8 @@ int main(int argc, char** argv)
 
             if(nodes.size() > 1)
             {
-                PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                PoseEstimation_Essential(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                // PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
                 // PoseEstimation_ICP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
                 // Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
 
