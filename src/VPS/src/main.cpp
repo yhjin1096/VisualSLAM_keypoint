@@ -25,18 +25,22 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
             prev_rimg = prev_node.right_cam.original_image.clone(),
             curr_limg = curr_node.left_cam.original_image.clone(),
             curr_rimg = curr_node.right_cam.original_image.clone();
+
     //stereo match circle
     for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
     {
         int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
         int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
+        // std::cout << prev_node.left_cam.keypoint.size() << "," << q_idx << prev_node.right_cam.keypoint.size() << "," << t_idx << std::endl;
         cv::circle(prev_limg, prev_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
         cv::circle(prev_rimg, prev_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
     }
-    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
+    std::cout << "======================" << std::endl;
+    for(int i = 0; i < curr_node.stereo_match.match_in.size(); i++)
     {
         int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
         int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
+        // std::cout << curr_node.left_cam.keypoint.size() << "," << q_idx << curr_node.right_cam.keypoint.size() << "," << t_idx << std::endl;
         cv::circle(curr_limg, curr_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
         cv::circle(curr_rimg, curr_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
     }
@@ -74,7 +78,7 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
     cv::hconcat(prev_limg, prev_rimg, prev_image);
     cv::hconcat(curr_limg, curr_rimg, curr_image);
 
-    //stereo match line
+    //visualize stereo match line
     for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
     {
         int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
@@ -90,7 +94,7 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
 
     cv::vconcat(curr_image, prev_image, whole_image);
 
-    //tracking line
+    //visualize tracking line
     for(int i = 0; i < tmp_corr.size(); i++)
     {
         int q_idx = tmp_corr[i].queryIdx; //prev_node left_cam
@@ -100,47 +104,48 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
         cv::line(whole_image, curr_node.left_cam.keypoint[t_idx].pt, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), cv::Scalar(0,255,0), 1);
     }
 
+    cv::resize(whole_image, whole_image, whole_image.size()/2);
     cv::imshow("whole_image", whole_image);
     char key = cv::waitKey(0);
     if(key==27)
         exit(0);
 ///////
 
-    // for(int i = 0; i < corr.match_in.size(); i++)
-    // {
-    //     int q_idx = corr.match_in[i].queryIdx;
-    //     int t_idx = corr.match_in[i].trainIdx;
-    //     bool match = false;
-    //     for(j = 0; j < prev_node.stereo_match.match_in.size(); j++)
-    //     {
-    //         if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
-    //         {
-    //             match = true;
-    //             break;
-    //         }
-    //     }
-    //     if(match)
-    //     {
-    //         point_cloud.push_back((cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2))));
-    //         // point_cloud.push_back(cv::Point3f(prev_node.left_cam.keypoint[q_idx].pt.x, prev_node.left_cam.keypoint[q_idx].pt.y, 0));
-    //         point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
-    //     }
-    // }
+    for(int i = 0; i < tmp_corr.size(); i++)
+    {
+        int q_idx = tmp_corr[i].queryIdx; //prev_node left_cam
+        int t_idx = tmp_corr[i].trainIdx; //curr_node left_cam
+        int j = 0;
+        for(j = 0; j < prev_node.stereo_match.match_in.size(); j++)
+        {
+            if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
+                break;
+        }
+        if(prev_node.points_3d[j](2) > 100.0 || prev_node.points_3d[j](2) < 0)
+            continue;
+        // std::cout << prev_node.points_3d[j].transpose() << std::endl;
+        point_cloud.push_back((cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2))));
+        // std::cout << cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2)) << std::endl;
+        point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
+        // std::cout << curr_node.left_cam.keypoint[t_idx].pt << std::endl;
+    }
 
     //ransac으로 inlier 검출
     cv::Mat dist_coeff = cv::Mat::zeros(5, 1, CV_64F), rvec, tvec, tvec_, rot_mat, rot_mat_;
     std::vector<int> inlier;//inlier index
-    cv::solvePnPRansac(point_cloud, point_pixel, prev_node.left_cam.K, dist_coeff, rvec, tvec, false, 500, 2, 0.99, inlier);
     
+    cv::solvePnPRansac(point_cloud, point_pixel, prev_node.left_cam.K, dist_coeff, rvec, tvec, false, 500, 2, 0.99, inlier);
+
     //inlier 기반으로 pose estimation
     for(int i = 0; i < inlier.size(); i++)
     {
         in_point_cloud.push_back(point_cloud[inlier[i]]);
         in_point_pixel.push_back(point_pixel[inlier[i]]);
     }
-    cv::solvePnP(in_point_cloud, in_point_pixel, prev_node.left_cam.K, dist_coeff, rvec, tvec);
-    cv::Rodrigues(rvec, rot_mat);
     
+    cv::solvePnP(in_point_cloud, in_point_pixel, prev_node.left_cam.K, dist_coeff, rvec, tvec);
+
+    cv::Rodrigues(rvec, rot_mat);
     rot_mat_ = rot_mat.inv();
     tvec_ = -rot_mat.inv()*tvec;
 
@@ -422,8 +427,10 @@ int main(int argc, char** argv)
                                             0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02, 0.000000000000e+00,
                                             0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00, 0.000000000000e+00;
 
-            node.left_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_0/%06d.png", image_index));
-            node.right_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_1/%06d.png", image_index));
+            // node.left_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_0/%06d.png", image_index));
+            // node.right_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_1/%06d.png", image_index));
+            node.left_cam.LoadImage(cv::format("/home/cona/data_odometry_gray/06/image_0/%06d.png", image_index));
+            node.right_cam.LoadImage(cv::format("/home/cona/data_odometry_gray/06/image_1/%06d.png", image_index));
 
             node.stereo_match = Matcher::KnnMatchingORB(node.left_cam.descriptor, node.right_cam.descriptor);
             // Matcher::DrawMatching(node.left_cam, node.right_cam, node.stereo_match, "stereo_match");
@@ -454,24 +461,25 @@ int main(int argc, char** argv)
     })));
 
 
-    GTPose gt_pose;
-    gt_pose.readGTPose("/home/cona/Downloads/data_odometry_gray/data_odometry_poses/dataset/poses/06.txt");
+    // GTPose gt_pose;
+    // // gt_pose.readGTPose("/home/cona/Downloads/data_odometry_gray/data_odometry_poses/dataset/poses/06.txt");
+    // gt_pose.readGTPose("/home/cona/data_odometry_gray/06/06.txt");
     
-    cv::viz::Viz3d myWindow("Coordinate Frame");
-    myWindow.setWindowSize(cv::Size(1280,960));
+    // cv::viz::Viz3d myWindow("Coordinate Frame");
+    // myWindow.setWindowSize(cv::Size(1280,960));
     
-    tasks.push_back(std::move(std::thread([&]()
-    {   
-        //3d visualize
-        for(int i = 0; i < gt_pose.pose_aff.size(); i++)
-            myWindow.showWidget(std::to_string(i), cv::viz::WCoordinateSystem(5.0), gt_pose.pose_aff[i]);
+    // tasks.push_back(std::move(std::thread([&]()
+    // {   
+    //     //3d visualize
+    //     for(int i = 0; i < gt_pose.pose_aff.size(); i++)
+    //         myWindow.showWidget(std::to_string(i), cv::viz::WCoordinateSystem(5.0), gt_pose.pose_aff[i]);
 
-        while(!myWindow.wasStopped())
-        {
+    //     while(!myWindow.wasStopped())
+    //     {
             
-            myWindow.spinOnce(1, true);
-        }
-    })));
+    //         myWindow.spinOnce(1, true);
+    //     }
+    // })));
     
     for(int i=0; i<(int)tasks.size(); i++)
         tasks[i].join();

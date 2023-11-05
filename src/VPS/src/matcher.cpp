@@ -44,7 +44,7 @@ Correspondence Matcher::KnnMatchingORB(const cv::Mat& query, const cv::Mat& trai
         output.is_in[i] = -1;
 
         // if(d1 / d2 < 0.6 && d1 < 0.5)
-        if(d1 < d2 * 0.75)
+        if(d1 < d2 * 0.65)
         {
             output.is_in[i] = (int)output.match_in.size();
             output.match_in.push_back(m1);
