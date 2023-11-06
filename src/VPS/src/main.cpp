@@ -10,6 +10,8 @@
 
 inline void PoseEstimation_Essential(const Node& prev_node, Node& curr_node)
 {
+    cv::Affine3f result;
+
     std::vector<cv::Point2f> points1;
     std::vector<cv::Point2f> points2;
     Correspondence matches = Matcher::KnnMatchingORB(prev_node.left_cam.descriptor, curr_node.left_cam.descriptor);
@@ -23,18 +25,52 @@ inline void PoseEstimation_Essential(const Node& prev_node, Node& curr_node)
 //   fundamental_matrix = cv::findFundamentalMat(points1, points2, cv::FM_8POINT);
 //   std::cout << "fundamental_matrix is " << std::endl << fundamental_matrix << std::endl;
 
-  cv::Mat essential_matrix;
-  essential_matrix = cv::findEssentialMat(points1, points2, prev_node.left_cam.K);
+    cv::Mat essential_matrix;
+    essential_matrix = cv::findEssentialMat(points1, points2, prev_node.left_cam.K);
 //   std::cout << "essential_matrix is " << std::endl << essential_matrix << std::endl;
 
 //   cv::Mat homography_matrix;
 //   homography_matrix = cv::findHomography(points1, points2, 0, 3);
 //   std::cout << "homography_matrix is " << std::endl << homography_matrix << std::endl;
 
-  cv::Mat R, t;
-  cv::recoverPose(essential_matrix, points1, points2, prev_node.left_cam.K, R, t);
-  std::cout << "R is " << std::endl << R.inv() << std::endl;
-  std::cout << "t is " << std::endl << -R.inv()*t << std::endl;
+    cv::Mat R_, t_, R, t;
+    cv::recoverPose(essential_matrix, points1, points2, prev_node.left_cam.K, R_, t_);
+    std::cout << "R is " << std::endl << R_.inv() << std::endl;
+    std::cout << "t is " << std::endl << -R_.inv()*t_ << std::endl;
+    
+    R = R_.inv();
+    t = -R_.inv()*t_;
+
+    pose_t relative_pose, world_pose;
+    Matrix4d transformation(Matrix4d::Identity());
+
+    relative_pose.R << R.at<double>(0,0), R.at<double>(0,1), R.at<double>(0,2),
+                       R.at<double>(1,0), R.at<double>(1,1), R.at<double>(1,2),
+                       R.at<double>(2,0), R.at<double>(2,1), R.at<double>(2,2);
+    relative_pose.t << t.at<double>(0,0), t.at<double>(1,0), t.at<double>(2,0);
+    world_pose.R = prev_node.pose.R * relative_pose.R;
+    world_pose.t = prev_node.pose.R * relative_pose.t + prev_node.pose.t;
+    curr_node.pose = world_pose;
+    // transformation.topLeftCorner(3,3) = curr_node.pose.R;
+    // transformation.topRightCorner(3,1) = curr_node.pose.t;
+
+    // curr_node.left_cam.projection_mat = curr_node.left_cam.intrinsic * transformation;
+    // std::cout << curr_node.left_cam.projection_mat << std::endl;
+
+    R = (cv::Mat_<float>(3,3) << world_pose.R(0,0), world_pose.R(0,1), world_pose.R(0,2),
+                                        world_pose.R(1,0), world_pose.R(1,1), world_pose.R(1,2),
+                                        world_pose.R(2,0), world_pose.R(2,1), world_pose.R(2,2));
+    t = (cv::Mat_<float>(3,1) << world_pose.t(0,0), world_pose.t(1,0), world_pose.t(2,0));
+
+
+    curr_node.R = R;
+    curr_node.t = t;
+    
+    R.convertTo(R, CV_32F);
+    result.rotation(R);
+    result.translation(t);
+
+    curr_node.pose_aff = result;
 }
 
 inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
@@ -50,31 +86,6 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
     //prev_node.left_cam.descriptor -> query, curr_node.left_cam.descriptor -> train
     Correspondence corr = Matcher::KnnMatchingORB(prev_node.left_cam.descriptor, curr_node.left_cam.descriptor);
 
-    cv::Mat prev_limg = prev_node.left_cam.original_image.clone(),
-            prev_rimg = prev_node.right_cam.original_image.clone(),
-            curr_limg = curr_node.left_cam.original_image.clone(),
-            curr_rimg = curr_node.right_cam.original_image.clone();
-
-    //stereo match circle
-    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
-    {
-        int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
-        int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
-        // std::cout << prev_node.left_cam.keypoint.size() << "," << q_idx << prev_node.right_cam.keypoint.size() << "," << t_idx << std::endl;
-        cv::circle(prev_limg, prev_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
-        cv::circle(prev_rimg, prev_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
-    }
-    std::cout << "======================" << std::endl;
-    for(int i = 0; i < curr_node.stereo_match.match_in.size(); i++)
-    {
-        int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
-        int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
-        // std::cout << curr_node.left_cam.keypoint.size() << "," << q_idx << curr_node.right_cam.keypoint.size() << "," << t_idx << std::endl;
-        cv::circle(curr_limg, curr_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
-        cv::circle(curr_rimg, curr_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
-    }
-
-    //tracking match circle
     std::vector<cv::DMatch> tmp_corr;
     for(int i = 0; i < corr.match_in.size(); i++)
     {
@@ -102,43 +113,6 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
             tmp_corr.push_back(corr.match_in[i]);
         }
     }
-
-    cv::Mat prev_image, curr_image, whole_image;
-    cv::hconcat(prev_limg, prev_rimg, prev_image);
-    cv::hconcat(curr_limg, curr_rimg, curr_image);
-
-    //visualize stereo match line
-    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
-    {
-        int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
-        int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
-        cv::line(prev_image, prev_node.left_cam.keypoint[q_idx].pt, prev_node.right_cam.keypoint[t_idx].pt+cv::Point2f(prev_node.left_cam.original_image.size().width,0), cv::Scalar(0,0,255), 1);
-    }
-    for(int i = 0; i < curr_node.stereo_match.match_in.size(); i++)
-    {
-        int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
-        int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
-        cv::line(curr_image, curr_node.left_cam.keypoint[q_idx].pt, curr_node.right_cam.keypoint[t_idx].pt+cv::Point2f(curr_node.left_cam.original_image.size().width,0), cv::Scalar(0,0,255), 1);
-    }
-
-    cv::vconcat(curr_image, prev_image, whole_image);
-
-    //visualize tracking line
-    for(int i = 0; i < tmp_corr.size(); i++)
-    {
-        int q_idx = tmp_corr[i].queryIdx; //prev_node left_cam
-        int t_idx = tmp_corr[i].trainIdx; //curr_node left_cam
-        cv::circle(whole_image, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), 3, cv::Scalar(0,255,0), 2);
-        cv::circle(whole_image, curr_node.left_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,255,0), 2);
-        cv::line(whole_image, curr_node.left_cam.keypoint[t_idx].pt, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), cv::Scalar(0,255,0), 1);
-    }
-
-    cv::resize(whole_image, whole_image, whole_image.size()/2);
-    cv::imshow("whole_image", whole_image);
-    char key = cv::waitKey(0);
-    if(key==27)
-        exit(0);
-///////
 
     for(int i = 0; i < tmp_corr.size(); i++)
     {
@@ -203,13 +177,21 @@ inline cv::Affine3f PoseEstimation_PnP(const Node& prev_node, Node& curr_node)
     // curr_node.left_cam.projection_mat = curr_node.left_cam.intrinsic * transformation;
     // std::cout << curr_node.left_cam.projection_mat << std::endl;
 
+    rot_mat_ = (cv::Mat_<float>(3,3) << world_pose.R(0,0), world_pose.R(0,1), world_pose.R(0,2),
+                                        world_pose.R(1,0), world_pose.R(1,1), world_pose.R(1,2),
+                                        world_pose.R(2,0), world_pose.R(2,1), world_pose.R(2,2));
+    tvec_ = (cv::Mat_<float>(3,1) << world_pose.t(0,0), world_pose.t(1,0), world_pose.t(2,0));
+
+
     curr_node.R = rot_mat_;
     curr_node.t = tvec_;
 
 
     rot_mat_.convertTo(rot_mat_, CV_32F);
     result.rotation(rot_mat_);
-    result.translation(tvec);
+    result.translation(tvec_);
+
+    curr_node.pose_aff = result;
     
     return result;
 }
@@ -428,6 +410,99 @@ inline void ProjectionStereo(const Node& node)
         exit(0);
 }
 
+inline void VisualizeTracking(const Node& prev_node, const Node& curr_node)
+{
+    Correspondence corr = Matcher::KnnMatchingORB(prev_node.left_cam.descriptor, curr_node.left_cam.descriptor);
+
+    cv::Mat prev_limg = prev_node.left_cam.original_image.clone(),
+            prev_rimg = prev_node.right_cam.original_image.clone(),
+            curr_limg = curr_node.left_cam.original_image.clone(),
+            curr_rimg = curr_node.right_cam.original_image.clone();
+
+    //stereo match circle
+    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
+        // std::cout << prev_node.left_cam.keypoint.size() << "," << q_idx << prev_node.right_cam.keypoint.size() << "," << t_idx << std::endl;
+        cv::circle(prev_limg, prev_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
+        cv::circle(prev_rimg, prev_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
+    }
+    for(int i = 0; i < curr_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
+        // std::cout << curr_node.left_cam.keypoint.size() << "," << q_idx << curr_node.right_cam.keypoint.size() << "," << t_idx << std::endl;
+        cv::circle(curr_limg, curr_node.left_cam.keypoint[q_idx].pt, 3, cv::Scalar(0,0,255), 1);
+        cv::circle(curr_rimg, curr_node.right_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,0,255), 1);
+    }
+
+    //trakcing features
+    std::vector<cv::DMatch> tmp_corr;
+    for(int i = 0; i < corr.match_in.size(); i++)
+    {
+        int q_idx = corr.match_in[i].queryIdx; //prev_node left_cam
+        int t_idx = corr.match_in[i].trainIdx; //curr_node left_cam
+        bool prev_match = false, curr_match = false;
+        for(int j = 0; j < prev_node.stereo_match.match_in.size(); j++)
+        {
+            if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
+            {
+                prev_match = true;
+                break;
+            }
+        }
+        for(int j = 0; j < curr_node.stereo_match.match_in.size(); j++)
+        {
+            if(curr_node.stereo_match.match_in[j].queryIdx == t_idx)
+            {
+                curr_match = true;
+                break;
+            }
+        }
+        if(prev_match && curr_match)
+        {   
+            tmp_corr.push_back(corr.match_in[i]);
+        }
+    }
+
+    cv::Mat prev_image, curr_image, whole_image;
+    cv::hconcat(prev_limg, prev_rimg, prev_image);
+    cv::hconcat(curr_limg, curr_rimg, curr_image);
+
+    //visualize stereo match line
+    for(int i = 0; i < prev_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = prev_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = prev_node.stereo_match.match_in[i].trainIdx;
+        cv::line(prev_image, prev_node.left_cam.keypoint[q_idx].pt, prev_node.right_cam.keypoint[t_idx].pt+cv::Point2f(prev_node.left_cam.original_image.size().width,0), cv::Scalar(0,0,255), 1);
+    }
+    for(int i = 0; i < curr_node.stereo_match.match_in.size(); i++)
+    {
+        int q_idx = curr_node.stereo_match.match_in[i].queryIdx;
+        int t_idx = curr_node.stereo_match.match_in[i].trainIdx;
+        cv::line(curr_image, curr_node.left_cam.keypoint[q_idx].pt, curr_node.right_cam.keypoint[t_idx].pt+cv::Point2f(curr_node.left_cam.original_image.size().width,0), cv::Scalar(0,0,255), 1);
+    }
+
+    cv::vconcat(curr_image, prev_image, whole_image);
+
+    //visualize tracking line
+    for(int i = 0; i < tmp_corr.size(); i++)
+    {
+        int q_idx = tmp_corr[i].queryIdx; //prev_node left_cam
+        int t_idx = tmp_corr[i].trainIdx; //curr_node left_cam
+        cv::circle(whole_image, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), 3, cv::Scalar(0,255,0), 2);
+        cv::circle(whole_image, curr_node.left_cam.keypoint[t_idx].pt, 3, cv::Scalar(0,255,0), 2);
+        cv::line(whole_image, curr_node.left_cam.keypoint[t_idx].pt, prev_node.left_cam.keypoint[q_idx].pt + cv::Point2f(0, curr_node.left_cam.original_image.size().height), cv::Scalar(0,255,0), 1);
+    }
+
+    cv::resize(whole_image, whole_image, whole_image.size()/2);
+    cv::imshow("whole_image", whole_image);
+    char key = cv::waitKey(0);
+    if(key==27)
+        exit(0);
+}
+
 int main(int argc, char** argv)
 {
     std::vector<std::thread> tasks;
@@ -456,10 +531,10 @@ int main(int argc, char** argv)
                                             0.000000000000e+00, 7.070912000000e+02, 1.831104000000e+02, 0.000000000000e+00,
                                             0.000000000000e+00, 0.000000000000e+00, 1.000000000000e+00, 0.000000000000e+00;
 
-            // node.left_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_0/%06d.png", image_index));
-            // node.right_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_1/%06d.png", image_index));
-            node.left_cam.LoadImage(cv::format("/home/cona/data_odometry_gray/06/image_0/%06d.png", image_index));
-            node.right_cam.LoadImage(cv::format("/home/cona/data_odometry_gray/06/image_1/%06d.png", image_index));
+            node.left_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_0/%06d.png", image_index));
+            node.right_cam.LoadImage(cv::format("/home/cona/Downloads/data_odometry_gray/dataset/sequences/06/image_1/%06d.png", image_index));
+            // node.left_cam.LoadImage(cv::format("/home/cona/data_odometry_gray/06/image_0/%06d.png", image_index));
+            // node.right_cam.LoadImage(cv::format("/home/cona/data_odometry_gray/06/image_1/%06d.png", image_index));
 
             node.stereo_match = Matcher::KnnMatchingORB(node.left_cam.descriptor, node.right_cam.descriptor);
             // Matcher::DrawMatching(node.left_cam, node.right_cam, node.stereo_match, "stereo_match");
@@ -474,8 +549,9 @@ int main(int argc, char** argv)
 
             if(nodes.size() > 1)
             {
-                PoseEstimation_Essential(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-                // PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                // PoseEstimation_Essential(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
+                VisualizeTracking(nodes[nodes.size()-2], nodes[nodes.size()-1]);
                 // PoseEstimation_ICP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
                 // Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
 
@@ -491,25 +567,28 @@ int main(int argc, char** argv)
     })));
 
 
-    // GTPose gt_pose;
-    // // gt_pose.readGTPose("/home/cona/Downloads/data_odometry_gray/data_odometry_poses/dataset/poses/06.txt");
+    GTPose gt_pose;
+    gt_pose.readGTPose("/home/cona/Downloads/data_odometry_gray/data_odometry_poses/dataset/poses/06.txt");
     // gt_pose.readGTPose("/home/cona/data_odometry_gray/06/06.txt");
     
-    // cv::viz::Viz3d myWindow("Coordinate Frame");
-    // myWindow.setWindowSize(cv::Size(1280,960));
+    cv::viz::Viz3d myWindow("Coordinate Frame");
+    myWindow.setWindowSize(cv::Size(1280,960));
     
-    // tasks.push_back(std::move(std::thread([&]()
-    // {   
-    //     //3d visualize
-    //     for(int i = 0; i < gt_pose.pose_aff.size(); i++)
-    //         myWindow.showWidget(std::to_string(i), cv::viz::WCoordinateSystem(5.0), gt_pose.pose_aff[i]);
+    tasks.push_back(std::move(std::thread([&]()
+    {   
+        //3d visualize
+        for(int i = 0; i < 15; i++)
+            myWindow.showWidget(std::to_string(i), cv::viz::WCoordinateSystem(2.0), gt_pose.pose_aff[i]);
 
-    //     while(!myWindow.wasStopped())
-    //     {
-            
-    //         myWindow.spinOnce(1, true);
-    //     }
-    // })));
+        while(!myWindow.wasStopped())
+        {
+            for(int i = 0; i < nodes.size(); i++)
+            {   
+                myWindow.showWidget(std::to_string(nodes[i].id) + std::to_string(i), cv::viz::WCoordinateSystem(3.0), nodes[i].pose_aff);
+            }
+            myWindow.spinOnce(1, true);
+        }
+    })));
     
     for(int i=0; i<(int)tasks.size(); i++)
         tasks[i].join();

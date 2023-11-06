@@ -17,6 +17,7 @@ class Node
         double base_line = 0.537150653;
         cv::Mat R = cv::Mat::eye(3, 3, CV_32F), t = cv::Mat::zeros(3, 1, CV_32F);
         pose_t pose; //world 기준 node 위치
+        cv::Affine3f pose_aff;
 
         Correspondence stereo_match;
         std::vector<cv::Point3d> points; //3d point
