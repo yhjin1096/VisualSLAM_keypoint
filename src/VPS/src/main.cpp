@@ -297,38 +297,54 @@ inline void Projection(const Node& prev_node, const Node& curr_node)
     //find correspondece between prev_node and curr_node
     Correspondence corr = Matcher::KnnMatchingORB(prev_node.left_cam.descriptor, curr_node.left_cam.descriptor);
 
+    std::vector<cv::DMatch> tmp_corr;
     for(int i = 0; i < corr.match_in.size(); i++)
     {
-        int q_idx = corr.match_in[i].queryIdx; // curr_left
-        int t_idx = corr.match_in[i].trainIdx; // prev_left
-        bool prev_match = false, curr_match=false;
-        for(prev_idx = 0; prev_idx < prev_node.stereo_match.match_in.size(); prev_idx++)
+        int q_idx = corr.match_in[i].queryIdx; //prev_node left_cam
+        int t_idx = corr.match_in[i].trainIdx; //curr_node left_cam
+        bool prev_match = false, curr_match = false;
+        for(int j = 0; j < prev_node.stereo_match.match_in.size(); j++)
         {
-            if(prev_node.stereo_match.match_in[prev_idx].queryIdx == t_idx)
+            if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
             {
-                // point_corr.push_back(std::make_pair(q_idx,t_idx));
                 prev_match = true;
                 break;
             }
         }
-        for(curr_idx = 0; curr_idx < curr_node.stereo_match.match_in.size(); curr_idx++)
+        for(int j = 0; j < curr_node.stereo_match.match_in.size(); j++)
         {
-            if(curr_node.stereo_match.match_in[curr_idx].queryIdx == q_idx)
+            if(curr_node.stereo_match.match_in[j].queryIdx == t_idx)
             {
-                // point_corr.push_back(std::make_pair(q_idx,t_idx));
                 curr_match = true;
                 break;
             }
         }
         if(prev_match && curr_match)
-        {
-            point_cloud.push_back(cv::Point3f(prev_node.points_3d[prev_idx](0),prev_node.points_3d[prev_idx](1),prev_node.points_3d[prev_idx](2)));
-            point_pixel.push_back(curr_node.left_cam.keypoint[q_idx].pt);
+        {   
+            tmp_corr.push_back(corr.match_in[i]);
         }
     }
-    std::cout << point_cloud.size() << std::endl;
 
-    //point cloud world기준으로 변경, projection
+    for(int i = 0; i < tmp_corr.size(); i++)
+    {
+        int q_idx = tmp_corr[i].queryIdx; //prev_node left_cam
+        int t_idx = tmp_corr[i].trainIdx; //curr_node left_cam
+        int j = 0;
+        for(j = 0; j < prev_node.stereo_match.match_in.size(); j++)
+        {
+            if(prev_node.stereo_match.match_in[j].queryIdx == q_idx)
+                break;
+        }
+        if(prev_node.points_3d[j](2) > 100.0 || prev_node.points_3d[j](2) < 0)
+            continue;
+        // std::cout << prev_node.points_3d[j].transpose() << std::endl;
+        point_cloud.push_back((cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2))));
+        // std::cout << cv::Point3f(prev_node.points_3d[j](0),prev_node.points_3d[j](1),prev_node.points_3d[j](2)) << std::endl;
+        point_pixel.push_back(curr_node.left_cam.keypoint[t_idx].pt);
+        // std::cout << curr_node.left_cam.keypoint[t_idx].pt << std::endl;
+    }
+
+    //point clou를 world기준으로 변경, projection
     for(int i = 0; i < point_cloud.size(); i++)
     {
         Vector3d point(point_cloud[i].x, point_cloud[i].y, point_cloud[i].z);
@@ -551,15 +567,9 @@ int main(int argc, char** argv)
             {
                 // PoseEstimation_Essential(nodes[nodes.size()-2],nodes[nodes.size()-1]);
                 PoseEstimation_PnP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-                VisualizeTracking(nodes[nodes.size()-2], nodes[nodes.size()-1]);
                 // PoseEstimation_ICP(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-                // Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
-
-                //prev node, current node 간의 correspondence 찾고
-                //prev node에서 3d point 계산 후
-                //pose estimation -> 예제코드 좀 더 추가
-                //correspondence 맞는지 확인해야함
-                //projection도 해보기
+                // VisualizeTracking(nodes[nodes.size()-2], nodes[nodes.size()-1]);
+                Projection(nodes[nodes.size()-2],nodes[nodes.size()-1]);
             }
 
             image_index++;
@@ -577,7 +587,7 @@ int main(int argc, char** argv)
     tasks.push_back(std::move(std::thread([&]()
     {   
         //3d visualize
-        for(int i = 0; i < 15; i++)
+        for(int i = 0; i < gt_pose.pose_aff.size(); i++)
             myWindow.showWidget(std::to_string(i), cv::viz::WCoordinateSystem(2.0), gt_pose.pose_aff[i]);
 
         while(!myWindow.wasStopped())
